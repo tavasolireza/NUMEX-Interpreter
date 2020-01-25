@@ -93,7 +93,7 @@
         [(num? e)
          (cond
            [(integer? (num-int e)) e]
-           [true ((error (format "what??: ~v" e)))])]
+           [#t ((error (format "what??: ~v" e)))])]
 
         [(bool? e)
          (cond
@@ -299,11 +299,23 @@
         
 ;; Problem 3
 
-(define (ifmunit e1 e2 e3) "CHANGE")
+(define (ifmunit e1 e2 e3)
+  (cond [(equal? (bool #t) (ismunit e1)) e2]
+        [#t e3]
+        ))
 
-(define (with* bs e2) "CHANGE")
+;I got help
+(define (with* bs e2)
+  (if (not (null? (car bs)))
+      (if (null? (cdr bs))
+          (with (car (car bs)) (cdr (car bs)) e2)
+          (with (car (car bs)) (cdr (car bs)) (with* (cdr bs) e2)))
+      (e2)))
 
-(define (ifneq e1 e2 e3 e4) "CHANGE")
+(define (ifneq e1 e2 e3 e4)
+  (cond [(not((equal? (iseq e1 e2) (bool #t)))) e3]
+        [#t e4]
+        ))
 
 ;; Problem 4
 
