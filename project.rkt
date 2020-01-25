@@ -224,7 +224,7 @@
            (cond
              [(bool? v1) (cond [(equal? (bool-b v1) #t) (eval-under-env (cnd-e2 e) env)]
                               [#t (eval-under-env (cnd-e3 e) env)])]
-             [#t (error "Cannot evaluate expression")]))
+             [#t (error (format "Error in cnd: ~v" e))]))
          ]
         
         [(closure? e) e]
@@ -232,21 +232,20 @@
         [(lam? e)
          (closure env e)]
 
-        ;I didn't write this all by myself, I got help
         [(apply? e)
-         (let ([funClosure (eval-under-env (apply-funexp e) env)])
-           (cond
-             [(closure? funClosure) (let ([functionDeclaration (closure-f funClosure)])
-                                      (let ([evaluatedActual (eval-under-env (apply-actual e) env)])
-                                        (eval-under-env-c (lam-body functionDeclaration) (cons (cons (lam-formal functionDeclaration) evaluatedActual)                                                                                  
-                                                                                               (cons (cons (lam-nameopt functionDeclaration) funClosure) (closure-env funClosure))))))]
-             [#t (error "It's not a closure")]))] 
+         (let ([v (eval-under-env (apply-actual e) env)]
+               [clsr (eval-under-env (apply-funexp e) env)])
+           (if (closure? clsr)
+               (let ([clsrFun (closure-f clsr)])
+                 (if (null? (lam-nameopt clsrFun))
+                     (eval-under-env (lam-body clsrFun) (cons (cons (lam-formal clsrFun) v) (closure-env clsr)))
+                     (eval-under-env (lam-body clsrFun) (cons (cons (lam-nameopt clsrFun) clsr) (cons (cons (lam-formal clsrFun) v) (closure-env clsr))))))
+               (error "NUMEX call applied to non-function" e)))]
         
-        ;I didn't write this all by myself, I got help
+        
         [(with? e)
-         (define wFunc (with-s e))
          (let ([v1 (eval-under-env (with-e1 e) env)])
-           (eval-under-env (with-e2 e) (cons (cons wFunc v1) env)))]
+               (eval-under-env (with-e2 e) (cons (cons (with-s e) v1) env)))]
 
         [(ismunit? e)
          (let ([v1 (eval-under-env (ismunit-e e) env)])
@@ -300,30 +299,61 @@
 ;; Problem 3
 
 (define (ifmunit e1 e2 e3)
-  (cond [(equal? (bool #t) (ismunit e1)) e2]
+  (cond [(munit? e1) e2]
         [#t e3]
         ))
 
-;I got help
+
 (define (with* bs e2)
-  (if (not (null? (car bs)))
-      (if (null? (cdr bs))
-          (with (car (car bs)) (cdr (car bs)) e2)
-          (with (car (car bs)) (cdr (car bs)) (with* (cdr bs) e2)))
-      (e2)))
+  (if (not (null? bs))
+      (with (car (car bs)) (cdr (car bs)) (with* (cdr bs) e2))
+      e2))
 
 (define (ifneq e1 e2 e3 e4)
-  (cond [(not((equal? (iseq e1 e2) (bool #t)))) e3]
-        [#t e4]
-        ))
+  (cnd (iseq e1 e2) e4 e3)
+  )
 
 ;; Problem 4
 
-(define numex-filter "CHANGE")
+(define numex-filter 
+  (lam null "mapper" 
+    (lam "map" "xs" 
+      (cnd (ismunit (var "xs")) 
+        (munit)
+        (with "result" (apply (var "mapper") (1st (var "xs"))) 
+          (ifnzero (var "result")
+            (apair (var "result") (apply (var "map") (2nd (var "xs"))))
+            (apply (var "map") (2nd (var "xs")))
+          )
+        )
+      )
+    )
+  )
+)
 
 (define numex-all-gt
   (with "filter" numex-filter
-        "CHANGE (notice filter is now in NUMEX scope)"))
+    (lam null "i"
+      (lam null "list"
+        (apply 
+          (apply (var "filter") (lam null "number"
+            (ifleq (var "number") (var "i")
+              (num 0)
+              (var "number") ;; what if number was 0?
+            )
+          ))
+          (var "list")
+        )
+      )
+    )
+  )
+)
+
+;(define numex-filter "CHANGE")
+
+;(define numex-all-gt
+ ; (with "filter" numex-filter
+   ;     "CHANGE (notice filter is now in NUMEX scope)"))
 
 ;; Challenge Problem
 
