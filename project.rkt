@@ -62,7 +62,7 @@
                                      [#t (apair (car xs) (racketlist->numexlist (cdr xs)))]))
 
 (define (numexlist->racketlist xs) (cond
-                                     [(munit? xs) '()]
+                                     [(munit? xs) null]
                                      [#t (cons (apair-e1 xs) (numexlist->racketlist (apair-e2 xs)))]))
 
 ;; Problem 2
@@ -80,7 +80,7 @@
 ;; We will test eval-under-env by calling it directly even though
 ;; "in real life" it would be a helper function of eval-exp.
 (define (eval-under-env e env)
-  (cond [(var? e) 
+  (cond [(var? e)
          (envlookup env (var-string e))]
         [(plus? e) 
          (let ([v1 (eval-under-env (plus-e1 e) env)]
@@ -106,7 +106,7 @@
                (num (- (num-int v1)))]
                [(equal? v1 (bool #t)) (bool #f)]
                [(equal? v1 (bool #f)) (bool #t)]
-               [(equal? v1 (munit)) (error "Not a valid input for neg")]
+               [#t (error "Invalid input")]
                ))]
 
         [(mult? e)
@@ -161,7 +161,7 @@
          (let ([v1 (eval-under-env (ifnzero-e1 e) env)])
                    (cond
                      [(num? v1) (cond [(not(equal? (num-int v1) 0)) (eval-under-env (ifnzero-e2 e) env)]
-                                      [true (eval-under-env (ifnzero-e3 e) env)])]
+                                      [#t (eval-under-env (ifnzero-e3 e) env)])]
                      [#t (error "Cannot evaluate expression")]))
          ]
 
@@ -187,7 +187,7 @@
                [v2 (eval-under-env (ifleq-e2 e) env)])
            (cond
              [(> (num-int v1) (num-int v2)) (eval-under-env (ifleq-e4 e) env)]
-             [true (eval-under-env (ifleq-e3 e) env)]))
+             [#t (eval-under-env (ifleq-e3 e) env)]))
          ]
 
         [(andalso? e)
@@ -199,10 +199,7 @@
                    (cond ([equal? (bool-b v2) #f]
                           [bool #f])
                          (#t [bool #t])
-                     )
-                   ))
-             ))
-         ]
+                     )))))]
         
 
         [(orelse? e)
@@ -214,10 +211,7 @@
                    (cond ([equal? (bool-b v2) #f]
                           [bool #f])
                          (#t [bool #t])
-                     )
-                   ))
-             ))
-         ]
+                         )))))]
 
         [(cnd? e)
          (let ([v1 (eval-under-env (cnd-e1 e) env)])
@@ -227,20 +221,26 @@
              [#t (error (format "Error in cnd: ~v" e))]))
          ]
         
-        [(closure? e) e]
+        [(closure? e)
+         e]
         
-        [(lam? e)
-         (closure env e)]
+        [(lam? e) 
+         (if (and (or (string? (lam-nameopt e)) (null? (lam-nameopt e))) (string? (lam-formal e)))
+             (closure env e)
+             (error "NUMEX function name and parameter name must be string")
+             )]
 
+        
+        
         [(apply? e)
-         (let ([v (eval-under-env (apply-actual e) env)]
-               [clsr (eval-under-env (apply-funexp e) env)])
-           (if (closure? clsr)
-               (let ([clsrFun (closure-f clsr)])
-                 (if (null? (lam-nameopt clsrFun))
-                     (eval-under-env (lam-body clsrFun) (cons (cons (lam-formal clsrFun) v) (closure-env clsr)))
-                     (eval-under-env (lam-body clsrFun) (cons (cons (lam-nameopt clsrFun) clsr) (cons (cons (lam-formal clsrFun) v) (closure-env clsr))))))
-               (error "NUMEX call applied to non-function" e)))]
+         (let ([v1 (eval-under-env (apply-funexp e) env)]
+               [v2 (eval-under-env (apply-actual e) env)])
+           (if (closure? v1)
+               (let ([v3 (closure-f v1)])
+                 (if (null? (lam-nameopt v3))
+                     (eval-under-env (lam-body v3) (cons (cons (lam-formal v3) v2) (closure-env v1)))
+                     (eval-under-env (lam-body v3) (cons (cons (lam-nameopt v3) v1) (cons (cons (lam-formal v3) v2) (closure-env v1))))))
+               (error "Not a lam" e)))]
         
         
         [(with? e)
@@ -257,37 +257,34 @@
         [(munit? e)
            (munit)]
 
+        [(letrec? e)
+          (eval-under-env (letrec-e3 e)
+                          (cons
+                           (cons (letrec-s1 e) (letrec-e1 e))
+                           (cons (cons (letrec-s2 e) (letrec-e2 e)) env)))]
+
         [(key? e)
          (cond [(string? (key-s e))
-             (let ([v (eval-under-env (key-e e) env)])
-               (key (key-s e) v)
-               )]
-             [#t (error "Incorrect Input")]
-             )
-         ]
+                (let ([v1 (eval-under-env (key-e e) env)])
+               (key (key-s e) v1))]
+               [#t (error "Key error")])]
 
         [(record? e)
-         (let
-             ([v1 (eval-under-env (record-k e) env)]
-              [v2 (eval-under-env (record-r e) env)]
-              )
+         (let ([v1 (eval-under-env (record-k e) env)]
+               [v2 (eval-under-env (record-r e) env)])
            (cond [(key? v1)
-               (cond
-                 [(or (munit? v2) (record? v2)) e]
-                 [#t (error "r is not munit")]
-                 )]
-               [#t (error "k is not key")]
-               ))
-         ]
+                  (cond [(or (munit? v2) (record? v2)) e]
+                    [#t (error "second argument error")])]
+                 [#t (error "error in key of record")]))]
 
         [(value? e)
-         (cond [(and (string? (value-s e)) (record? (value-r e)))
-             (let ([v (eval-under-env (value-r e) env)])
-               (value (value-s e) v)
-               )]
-             [#t (error "Incorrect Input")]
-             )
-         ]
+         (let ([v1 (eval-under-env (value-r e) env)])
+           (cond [(record? v1)
+               (cond [(equal? (value-s e) (key-s (record-k (value-r e))))
+                   (eval-under-env (key-e (record-k (value-r e))) env)]
+                   [#t (cond [(munit? (record-r (value-r e))) (munit)]
+                       [#t (eval-under-env (value (value-s e) (record-r (value-r e))) env)])])]
+               [#t (error "Error in value")]))]
         
         ;; CHANGE add more cases here
         [#t (error (format "bad NUMEX expression: ~v" e))]))
@@ -315,45 +312,26 @@
 
 ;; Problem 4
 
+
+; I got help for this section
+
 (define numex-filter 
-  (lam null "mapper" 
-    (lam "map" "xs" 
-      (cnd (ismunit (var "xs")) 
-        (munit)
-        (with "result" (apply (var "mapper") (1st (var "xs"))) 
-          (ifnzero (var "result")
-            (apair (var "result") (apply (var "map") (2nd (var "xs"))))
-            (apply (var "map") (2nd (var "xs")))
-          )
-        )
-      )
-    )
-  )
-)
+  (lam null "mapfunc" 
+       (lam "numex-map" "list" 
+            (cnd (ismunit (var "list")) 
+                 (munit)
+                 (with "return-value" (apply (var "mapfunc") (1st (var "list"))) 
+                       (ifnzero (var "return-value")
+                                (apair (var "return-value") (apply (var "numex-map") (2nd (var "list"))))
+                                (apply (var "numex-map") (2nd (var "list")))))))))
 
 (define numex-all-gt
   (with "filter" numex-filter
-    (lam null "i"
-      (lam null "list"
-        (apply 
-          (apply (var "filter") (lam null "number"
-            (ifleq (var "number") (var "i")
-              (num 0)
-              (var "number") ;; what if number was 0?
-            )
-          ))
-          (var "list")
-        )
-      )
-    )
-  )
-)
-
-;(define numex-filter "CHANGE")
-
-;(define numex-all-gt
- ; (with "filter" numex-filter
-   ;     "CHANGE (notice filter is now in NUMEX scope)"))
+        (lam null "i"
+             (lam null "list"
+                  (apply (apply (var "filter") (lam null "greater"
+                                              (ifleq (var "greater") (var "i") (num 0) (var "greater"))))
+                         (var "list"))))))
 
 ;; Challenge Problem
 
